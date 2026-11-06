@@ -1,0 +1,21 @@
+# ==========================================
+# FatCat Git Ignore Rules
+# ==========================================
+
+# SnowLuma Binaries, Native Addons, Runtime and Local Caches
+snowluma/
+
+# Logs and runtime artifacts
+*.log
+*.tmp
+
+# Dependencies & Local AI proxy caches
+node_modules/
+.gemini/
+__pycache__/
+
+# Windows & OS Artifacts
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "dafeiyu-qq": {
+      "command": "node",
+      "args": ["e:/AgentProjects/大肥鱼/.agents/plugins/dafeiyu-qq/mcp/onebot_mcp.mjs"],
+      "env": {
+        "ONEBOT_HTTP_ENDPOINT": "http://127.0.0.1:3000",
+        "ONEBOT_ACCESS_TOKEN": "2KLZUoF6jBpV0OkMEu44wPMSogEX4I0cWqRm8p2Z5LY"
+      }
+    }
+  }
+}
