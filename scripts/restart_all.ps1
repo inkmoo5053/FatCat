@@ -1,4 +1,6 @@
-# DaFeiYu QQ Agent Service Restarter
+# ==============================================================================
+# ★ 大肥鱼 (DaFeiYu) QQ 智能体一键全自动重启恢复脚本 ★
+# ==============================================================================
 $ErrorActionPreference = "Continue"
 
 Write-Host "======================================================" -ForegroundColor Cyan
@@ -20,13 +22,13 @@ Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" | ForEach-Object {
     if ($cmd -and ($cmd.Contains("snowluma") -or $cmd.Contains("dafeiyu_daemon"))) {
         try {
             Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
-            Write-Host "  -> Killed process (PID: $($_.ProcessId))" -ForegroundColor Gray
+            Write-Host "  -> Stopped stale process (PID: $($_.ProcessId))" -ForegroundColor Gray
             $killedCount++
         } catch {}
     }
 }
-Start-Sleep -Seconds 1
-Write-Host "  -> Cleared $killedCount stale process(es)." -ForegroundColor Green
+Start-Sleep -Milliseconds 800
+Write-Host "  -> Done! Cleared $killedCount stale process(es)." -ForegroundColor Green
 
 # Step 2: Check Gemini Proxy (Port 49281)
 Write-Host "`n[2/4] Checking Gemini Proxy (127.0.0.1:49281)..." -ForegroundColor Yellow
@@ -52,31 +54,37 @@ if ($proxyAlive) {
     Write-Host "  -> Gemini Proxy launch command issued." -ForegroundColor Green
 }
 
-# Step 3: Start SnowLuma Protocol Layer
+# Step 3: Check QQ NT Process & Launch SnowLuma
 Write-Host "`n[3/4] Launching SnowLuma NTQQ Hook runtime..." -ForegroundColor Yellow
+
+# Check if QQ is running
+$qqProc = Get-Process -Name "*qq*" -ErrorAction SilentlyContinue
+if (-not $qqProc) {
+    Write-Host "  -> [Notice] QQ process not detected yet." -ForegroundColor DarkYellow
+    Write-Host "     Please make sure to open and log in to QQ so SnowLuma can hook." -ForegroundColor DarkYellow
+} else {
+    Write-Host "  -> QQ process is running (PID: $($qqProc[0].Id))" -ForegroundColor Green
+}
+
 $snowNode = Join-Path $SnowLumaDir "node.exe"
 if (-not (Test-Path $snowNode)) {
     $snowNode = "node.exe"
 }
 
-$psi = New-Object System.Diagnostics.ProcessStartInfo
-$psi.FileName = $snowNode
-$psi.Arguments = ".\index.mjs"
-$psi.WorkingDirectory = $SnowLumaDir
-$psi.EnvironmentVariables["SNOWLUMA_ACCEPT_EULA"] = "1"
-$psi.EnvironmentVariables["SNOWLUMA_ACCEPT_PRIVACY"] = "1"
-$psi.UseShellExecute = $false
-$psi.CreateNoWindow = $true
+# Inject environment variables into calling process so child inherits
+$env:SNOWLUMA_ACCEPT_EULA = "1"
+$env:SNOWLUMA_ACCEPT_PRIVACY = "1"
 
-$proc = [System.Diagnostics.Process]::Start($psi)
-Write-Host "  -> SnowLuma started in background (PID: $($proc.Id))" -ForegroundColor Green
+# Launch SnowLuma decoupled as independent process
+$snowProc = Start-Process -FilePath $snowNode -ArgumentList ".\index.mjs" -WorkingDirectory $SnowLumaDir -WindowStyle Minimized -PassThru
+Write-Host "  -> SnowLuma started in background (PID: $($snowProc.Id))" -ForegroundColor Green
 
 # Wait for OneBot HTTP ready
 Write-Host "  -> Waiting for QQ Hook attachment and OneBot HTTP API..." -ForegroundColor Gray
 $loginOk = $false
 $headers = @{ "Authorization" = "Bearer $OneBotToken" }
 
-for ($i = 1; $i -le 15; $i++) {
+for ($i = 1; $i -le 10; $i++) {
     Start-Sleep -Seconds 1
     try {
         $loginRes = Invoke-RestMethod -Uri "http://127.0.0.1:3000/get_login_info" -Headers $headers -TimeoutSec 2 -ErrorAction Stop
@@ -88,25 +96,21 @@ for ($i = 1; $i -le 15; $i++) {
             break
         }
     } catch {}
-    Write-Host "     Connecting to OneBot ($i/15s)..." -ForegroundColor Gray
+    Write-Host "     Waiting for OneBot API ($i/10s)..." -ForegroundColor Gray
 }
 
 if (-not $loginOk) {
-    Write-Host "  -> [Notice] SnowLuma is running. If QQ is not logged in, please confirm login on QQ client." -ForegroundColor Yellow
+    Write-Host "  -> [Standby] SnowLuma is running in background." -ForegroundColor Yellow
+    Write-Host "     If QQ is not yet logged in, once you log in, it will connect automatically." -ForegroundColor Yellow
 }
 
-# Step 4: Start Auto-Reply Daemon
+# Step 4: Start Auto-Reply Daemon in an independent keep-open console
 Write-Host "`n[4/4] Starting Gemini Catgirl Auto-Reply Daemon..." -ForegroundColor Yellow
 
-$daemonPsi = New-Object System.Diagnostics.ProcessStartInfo
-$daemonPsi.FileName = "cmd.exe"
-$daemonPsi.Arguments = "/c node `"$DaemonScript`""
-$daemonPsi.WorkingDirectory = $WorkspaceRoot
-$daemonPsi.UseShellExecute = $true
-$daemonPsi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Normal
+$daemonArgs = "/k chcp 65001 >nul & title 大肥鱼 QQ 全自动秒回守护进程 & node `"$DaemonScript`""
+Start-Process -FilePath "cmd.exe" -ArgumentList $daemonArgs -WorkingDirectory $WorkspaceRoot
 
-[System.Diagnostics.Process]::Start($daemonPsi) | Out-Null
-Write-Host "  -> Auto-Reply Daemon launched in a separate window!" -ForegroundColor Green
+Write-Host "  -> Auto-Reply Daemon console opened in a separate window!" -ForegroundColor Green
 
 Write-Host "`n======================================================" -ForegroundColor Cyan
 Write-Host "   Restart Complete! All DaFeiYu services restored!   " -ForegroundColor Green
