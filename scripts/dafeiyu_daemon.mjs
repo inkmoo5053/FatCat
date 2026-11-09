@@ -71,11 +71,8 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// 群聊回复策略
-const REPLY_ALL_GROUP_MSGS = false;
-const ACTIVE_REPLY_GROUPS = [288106197, 1128539838]; // 主人活跃互动群白名单（全量积极应答）
-const RANDOM_CHAT_PROBABILITY = 0.35;    // 普通群活跃插话搭话概率 (35%)
-const WAKEUP_NAMES = ['基米', '基米喵', '细盐', '杰米', '猫娘', '大肥鱼', 'gemini', 'Gemini', '打工', '猫猫'];
+// 群聊回复策略（严格三要素触发，非呼唤消息一律静默潜水）
+const WAKEUP_NAMES = ['基米', '基米喵', '细盐', '杰米', '猫娘', '大肥鱼', 'gemini', 'Gemini'];
 
 // 根据魔数或扩展名探测 MIME 类型
 function detectMimeType(buffer, defaultType = 'image/jpeg') {
@@ -437,35 +434,24 @@ async function checkIsReplyToMe(payload, rawMsg) {
   return { isReplyToMe: false };
 }
 
-// 群聊触发条件检查
+// 群聊触发条件检查（严格限制：仅关键词、艾特、引用回复触发，其余一律静默）
 async function shouldReplyGroup(payload, rawMsg) {
-  if (REPLY_ALL_GROUP_MSGS) return { shouldReply: true, reason: '全量模式' };
-
-  const groupId = Number(payload.group_id);
-  if (ACTIVE_REPLY_GROUPS.includes(groupId)) {
-    return { shouldReply: true, reason: '活跃互动群全量应答' };
-  }
-
-  // 1. 真实 QQ @ 检查（消息段或 CQ 码）
+  // 1. 真实 QQ @ 检查（消息段或 CQ 码 @机器人）
   const isAtMe = payload.message?.some?.(m => m.type === 'at' && m.data?.qq == BOT_UIN) ||
                  rawMsg.includes(`[CQ:at,qq=${BOT_UIN}]`);
   if (isAtMe) return { shouldReply: true, reason: '艾特唤醒' };
 
-  // 2. 名字唤醒词
+  // 2. 名字与专属关键词唤醒
   const hasWakeupName = WAKEUP_NAMES.some(name => rawMsg.includes(name));
-  if (hasWakeupName) return { shouldReply: true, reason: '名字唤醒' };
+  if (hasWakeupName) return { shouldReply: true, reason: '关键词唤醒' };
 
-  // 3. 引用回复了基米的消息（即使不艾特也应答！）
+  // 3. 引用回复了基米的消息（对话连续性应答）
   const replyCheck = await checkIsReplyToMe(payload, rawMsg);
   if (replyCheck.isReplyToMe) {
     return { shouldReply: true, reason: '引用回复唤醒', quotedMsg: replyCheck.quotedMsg };
   }
 
-  // 4. 随机插话
-  if (RANDOM_CHAT_PROBABILITY > 0 && Math.random() < RANDOM_CHAT_PROBABILITY) {
-    return { shouldReply: true, reason: '随机搭话' };
-  }
-
+  // 其余所有未明确呼唤基米的消息，100% 保持安静潜水，绝不打扰群友
   return { shouldReply: false };
 }
 
