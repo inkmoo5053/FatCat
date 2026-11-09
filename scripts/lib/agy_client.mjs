@@ -20,11 +20,57 @@ const SESSION_FILE = path.join(ROOT_DIR, 'data', 'agy_session.json');
 
 const AGENTAPI_PATH = 'C:\\Users\\fyy26\\.gemini\\antigravity\\bin\\agentapi.bat';
 const BRAIN_DIR = 'C:\\Users\\fyy26\\.gemini\\antigravity\\brain';
-const FALLBACK_PROXY = 'http://127.0.0.1:49281/v1beta/models/gemini-2.5-flash:generateContent';
+const DAEMON_DIR = 'C:\\Users\\fyy26\\.gemini\\antigravity\\daemon';
+const FALLBACK_PROXY = 'http://127.0.0.1:49281/v1beta/models/gemini-3.6-flash:generateContent';
+
+/**
+ * 动态获取 Antigravity Language Server 守护进程的连接配置与 Token
+ */
+function getActiveHubEnv() {
+  if (process.env.ANTIGRAVITY_LS_ADDRESS && process.env.ANTIGRAVITY_CSRF_TOKEN) {
+    return {
+      ANTIGRAVITY_LS_ADDRESS: process.env.ANTIGRAVITY_LS_ADDRESS,
+      ANTIGRAVITY_CSRF_TOKEN: process.env.ANTIGRAVITY_CSRF_TOKEN
+    };
+  }
+
+  try {
+    if (fs.existsSync(DAEMON_DIR)) {
+      const files = fs.readdirSync(DAEMON_DIR)
+        .filter(f => f.startsWith('hub_') && f.endsWith('.json'))
+        .map(f => {
+          const fullPath = path.join(DAEMON_DIR, f);
+          return { fullPath, mtime: fs.statSync(fullPath).mtimeMs };
+        })
+        .sort((a, b) => b.mtime - a.mtime);
+
+      for (const file of files) {
+        try {
+          const content = JSON.parse(fs.readFileSync(file.fullPath, 'utf-8'));
+          if (content.httpPort && content.csrfToken) {
+            return {
+              ANTIGRAVITY_LS_ADDRESS: `localhost:${content.httpPort}`,
+              ANTIGRAVITY_CSRF_TOKEN: content.csrfToken
+            };
+          }
+        } catch {}
+      }
+    }
+  } catch (e) {
+    console.warn('[AGY Client] 查找 hub 环境变量失败:', e.message);
+  }
+
+  return {};
+}
 
 function execCommand(file, args) {
+  const hubEnv = getActiveHubEnv();
   return new Promise((resolve, reject) => {
-    execFile(file, args, { shell: true, windowsHide: true }, (err, stdout, stderr) => {
+    execFile(file, args, {
+      shell: true,
+      windowsHide: true,
+      env: { ...process.env, ...hubEnv }
+    }, (err, stdout, stderr) => {
       if (err) return reject(new Error(stderr || stdout || err.message));
       resolve(stdout.trim());
     });
@@ -71,7 +117,7 @@ async function getOrCreateConversation(systemPrompt = '') {
 /**
  * 监听指定 transcript.jsonl 等待新回复产出
  */
-function waitForResponse(transcriptPath, initialLineCount, timeoutMs = 25000) {
+function waitForResponse(transcriptPath, initialLineCount, timeoutMs = 45000) {
   return new Promise((resolve, reject) => {
     const startTime = Date.now();
 

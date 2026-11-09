@@ -19,7 +19,7 @@ Write-Host "`n[1/4] Stopping stale SnowLuma and Daemon node processes..." -Foreg
 $killedCount = 0
 Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" | ForEach-Object {
     $cmd = $_.CommandLine
-    if ($cmd -and ($cmd.Contains("snowluma") -or $cmd.Contains("dafeiyu_daemon"))) {
+    if ($cmd -and ($cmd.Contains("snowluma") -or $cmd.Contains("dafeiyu_daemon") -or $cmd.Contains("index.mjs"))) {
         try {
             Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
             Write-Host "  -> Stopped stale process (PID: $($_.ProcessId))" -ForegroundColor Gray
@@ -45,10 +45,12 @@ if ($proxyAlive) {
     Write-Host "  -> Gemini Proxy is ACTIVE and ready!" -ForegroundColor Green
 } else {
     Write-Host "  -> Starting Gemini Proxy..." -ForegroundColor Yellow
-    if (Test-Path "$ProxyDir\start_silent.vbs") {
-        Start-Process "wscript.exe" -ArgumentList "`"$ProxyDir\start_silent.vbs`"" -WorkingDirectory $ProxyDir
-    } elseif (Test-Path "$ProxyDir\沉浸式翻译Gemini网桥.exe") {
+    if (Test-Path "$ProxyDir\沉浸式翻译Gemini网桥.exe") {
         Start-Process "$ProxyDir\沉浸式翻译Gemini网桥.exe" -WorkingDirectory $ProxyDir
+    } elseif (Test-Path "$ProxyDir\启动网桥.bat") {
+        Start-Process "cmd.exe" -ArgumentList "/c `"$ProxyDir\启动网桥.bat`"" -WorkingDirectory $ProxyDir -WindowStyle Hidden
+    } elseif (Test-Path "$ProxyDir\start_silent.vbs") {
+        Start-Process "wscript.exe" -ArgumentList "`"$ProxyDir\start_silent.vbs`"" -WorkingDirectory $ProxyDir
     }
     Start-Sleep -Seconds 2
     Write-Host "  -> Gemini Proxy launch command issued." -ForegroundColor Green
@@ -76,8 +78,10 @@ $env:SNOWLUMA_ACCEPT_EULA = "1"
 $env:SNOWLUMA_ACCEPT_PRIVACY = "1"
 
 # Launch SnowLuma decoupled as independent process
-$snowProc = Start-Process -FilePath $snowNode -ArgumentList ".\index.mjs" -WorkingDirectory $SnowLumaDir -WindowStyle Minimized -PassThru
-Write-Host "  -> SnowLuma started in background (PID: $($snowProc.Id))" -ForegroundColor Green
+$snowIndex = Join-Path $SnowLumaDir "index.mjs"
+$snowCmd = "/k set SNOWLUMA_ACCEPT_EULA=1 & set SNOWLUMA_ACCEPT_PRIVACY=1 & chcp 65001 >nul & title SnowLuma OneBot NTQQ & `"$snowNode`" `"$snowIndex`""
+$snowProc = Start-Process -FilePath "cmd.exe" -ArgumentList $snowCmd -WorkingDirectory $SnowLumaDir -WindowStyle Minimized -PassThru
+Write-Host "  -> SnowLuma started in independent window (PID: $($snowProc.Id))" -ForegroundColor Green
 
 # Wait for OneBot HTTP ready
 Write-Host "  -> Waiting for QQ Hook attachment and OneBot HTTP API..." -ForegroundColor Gray

@@ -24,7 +24,7 @@ const WebSocket = globalThis.WebSocket;
 const WS_URL = 'ws://127.0.0.1:3001?access_token=5GjC1E-S29Zj6-XFzOB2tqXRTbmjxIRYpyzUGRCeAQg';
 const ONEBOT_HTTP = 'http://127.0.0.1:3000';
 const ONEBOT_TOKEN = '2KLZUoF6jBpV0OkMEu44wPMSogEX4I0cWqRm8p2Z5LY';
-const GEMINI_PROXY = 'http://127.0.0.1:49281/v1beta/models/gemini-2.5-flash:generateContent';
+const GEMINI_PROXY = 'http://127.0.0.1:49281/v1beta/models/gemini-3.6-flash:generateContent';
 const BOT_UIN = 3914050397;
 // 主人专属 QQ 白名单 (仅主人享有特权指令与 AGY 内部通道路由权限)
 const OWNER_UINS = [1901864430];
