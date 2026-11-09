@@ -111,7 +111,7 @@ if (-not $loginOk) {
 # Step 4: Start Auto-Reply Daemon in an independent keep-open console
 Write-Host "`n[4/4] Starting Gemini Catgirl Auto-Reply Daemon..." -ForegroundColor Yellow
 
-$daemonArgs = "/k chcp 65001 >nul & title 大肥鱼 QQ 全自动秒回守护进程 & node `"$DaemonScript`""
+$daemonArgs = "/k chcp 65001 >nul & title DaFeiYu QQ Bot Daemon & node `"$DaemonScript`""
 Start-Process -FilePath "cmd.exe" -ArgumentList $daemonArgs -WorkingDirectory $WorkspaceRoot
 
 Write-Host "  -> Auto-Reply Daemon console opened in a separate window!" -ForegroundColor Green
