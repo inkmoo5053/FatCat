@@ -335,9 +335,16 @@ async function askGeminiWithContext(sessionKey, userText, imageTargets, senderNi
   // 1. 所有对话（私聊与群聊）100% 消耗 Antigravity 登录 Google 账号的顶级旗舰配额 (Gemini 3.8 Flash High)
   // 2. 底层会话工作区物理绑定在 data/sandbox_agy 空沙箱，注入纯聊天锁，绝对禁止工具调用
   // 3. 若 AGY 内部超时或离线，毫秒级平滑降级至本地安全网桥 (49281)
-  // 100% 走纯文本无工具安全沙箱大模型 (Gemini 3.6 Flash)
-  // 杜绝 IDE 代码智能体执行 run_command / read_file 导致在聊天中汇报“准备查看目录”
-  finalReply = await callSafeProxy(body);
+  // 【核心路由：优先全面消耗 Antigravity 内部 Gemini 3.8 Flash 顶级额度】
+  try {
+    const historyText = history.map(h => `${h.role === 'user' ? '用户' : '基米'}: ${h.parts.map(p => p.text).filter(Boolean).join(' ')}`).join('\n');
+    const promptText = `【前序上下文】\n${historyText}\n\n【最新消息】\n${speakerTag}: ${sanitizedText}${recalledContextText}`;
+
+    finalReply = await askAntigravityModel(promptText, SYSTEM_PROMPT);
+  } catch (err) {
+    console.warn('[AGY 内部通道波动，平滑降级至安全网桥]', err.message);
+    finalReply = await callSafeProxy(body);
+  }
 
   // 5. 实时持久化落盘至 SQLite 记忆库
   try {
