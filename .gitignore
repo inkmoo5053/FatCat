@@ -6,6 +6,7 @@
 snowluma/
 
 # Local Memory & Browser Profiles (Privacy & Runtime data)
+data/agy_session.json
 data/memory/*.db*
 data/memory/*.sqlite*
 data/browser_profiles/*

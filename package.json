@@ -8,7 +8,8 @@
     "start": "node scripts/dafeiyu_daemon.mjs",
     "reflect": "node scripts/run_reflection.mjs",
     "test:memory": "node scripts/test_memory.mjs",
-    "test:intel": "node scripts/test_intel.mjs"
+    "test:intel": "node scripts/test_intel.mjs",
+    "test:agy": "node scripts/test_agy_client.mjs"
   },
   "keywords": [
     "deepseek-harness",

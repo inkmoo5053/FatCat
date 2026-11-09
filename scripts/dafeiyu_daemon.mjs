@@ -13,6 +13,7 @@ import {
   getZhihuHotList, 
   getWeiboHotSearch 
 } from './lib/intel_scout.mjs';
+import { askAntigravityModel } from './lib/agy_client.mjs';
 
 // 初始化持久化记忆数据库
 initMemory();
@@ -268,17 +269,32 @@ async function askGeminiWithContext(sessionKey, userText, imageTargets, senderNi
     ]
   };
 
+  let finalReply = '';
   try {
-    const res = await fetch(GEMINI_PROXY, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-    const data = await res.json();
-    const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    const finalReply = reply ? reply.trim() : '呼噜噜~ 刚才算力波动没听清喵~ 🐾';
+    // 优先调用 Antigravity 官方内部通道（100% 消耗 AGY 内部专属额度）
+    const historyText = history.map(h => `${h.role === 'user' ? '群友' : '基米'}: ${h.parts.map(p => p.text).filter(Boolean).join(' ')}`).join('\n');
+    const promptText = `【前序上下文】\n${historyText}\n\n【最新消息】\n${speakerTag}: ${displayText}${recalledContextText}`;
 
-    // 5. 实时持久化落盘至 SQLite 记忆库
+    finalReply = await askAntigravityModel(promptText, SYSTEM_PROMPT);
+  } catch (err) {
+    console.warn('[AGY 内部通道异常，降级至备用网桥]', err.message);
+    try {
+      const res = await fetch(GEMINI_PROXY, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      finalReply = reply ? reply.trim() : '呼噜噜~ 刚才算力波动没听清喵~ 🐾';
+    } catch (fallbackErr) {
+      console.error('[模型生成彻底失败]', fallbackErr.message);
+      finalReply = '呜哇~ 脑电波好像有点卡壳了喵呜~ 🐾';
+    }
+  }
+
+  // 5. 实时持久化落盘至 SQLite 记忆库
+  try {
     const imageTag = imageParts.length > 0 ? `[发送了 ${imageParts.length} 张图片：已在此轮完成识别]` : '';
     recordMessage({
       sessionKey,
@@ -297,12 +313,11 @@ async function askGeminiWithContext(sessionKey, userText, imageTargets, senderNi
       role: 'model',
       content: finalReply
     });
-
-    return finalReply;
-  } catch (err) {
-    console.error('[Gemini API 错误]', err.message);
-    return '呜哇~ 脑电波好像有点卡壳了喵呜~ 🐾';
+  } catch (dbErr) {
+    console.error('[记忆入库错误]', dbErr.message);
   }
+
+  return finalReply;
 }
 
 // 记录机器人自己发出的所有消息 ID（用于瞬时匹配被回复的消息）

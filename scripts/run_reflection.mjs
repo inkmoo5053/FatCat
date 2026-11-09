@@ -15,11 +15,11 @@ import {
   saveFactTriplet, 
   getMemoryStats 
 } from './lib/memory_engine.mjs';
+import { askAntigravityModel } from './lib/agy_client.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPORT_DIR = path.resolve(__dirname, '../data/reflection_reports');
-const GEMINI_PROXY = 'http://127.0.0.1:49281/v1beta/models/gemini-2.5-flash:generateContent';
 
 export async function runReflection() {
   console.log('======================================================');
@@ -70,21 +70,9 @@ ${chatSnippets || '（今日暂无群聊流水记录）'}
 
   let reportContent = '';
   try {
-    const res = await fetch(GEMINI_PROXY, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: reflectionPrompt }] }]
-      })
-    });
-    if (res.ok) {
-      const data = await res.json();
-      reportContent = data?.candidates?.[0]?.content?.parts?.[0]?.text || '（模型返回空报告）';
-    } else {
-      reportContent = `反思模型调用异常 (HTTP ${res.status})，降级为基础元数据归档。`;
-    }
+    reportContent = await askAntigravityModel(reflectionPrompt, '你是一个终极智能体认知架构师与知识图谱专家。');
   } catch (err) {
-    reportContent = `反思引擎无法连接模型网桥: ${err.message}，已记录本地日志。`;
+    reportContent = `反思引擎调用异常: ${err.message}，已记录本地日志。`;
   }
 
   // 3. 解析并沉淀三元组至数据库
