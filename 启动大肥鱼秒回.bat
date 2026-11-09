@@ -1,6 +1,9 @@
 @echo off
-title 大肥鱼 QQ 全自动秒回守护进程
+chcp 65001 >nul
+title DaFeiYu QQ Bot Daemon
 cd /d "%~dp0"
-echo 正在启动大肥鱼自动秒回守护进程...
+echo ======================================================
+echo    DaFeiYu QQ Bot Daemon (Antigravity Internal Quota)
+echo ======================================================
 node .\scripts\dafeiyu_daemon.mjs
 pause

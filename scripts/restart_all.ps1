@@ -30,8 +30,32 @@ Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" | ForEach-Object {
 Start-Sleep -Milliseconds 800
 Write-Host "  -> Done! Cleared $killedCount stale process(es)." -ForegroundColor Green
 
-# Step 2: Check Gemini Proxy (Port 49281)
-Write-Host "`n[2/4] Checking Gemini Proxy (127.0.0.1:49281)..." -ForegroundColor Yellow
+# Step 2: Check AI Model Engines (Antigravity & Gemini Proxy)
+Write-Host "`n[2/4] Checking AI Model Engines..." -ForegroundColor Yellow
+
+# Check Antigravity Language Server (AGY Quota Channel)
+$agyActive = $false
+$daemonDir = "C:\Users\fyy26\.gemini\antigravity\daemon"
+if (Test-Path $daemonDir) {
+    $hubs = Get-ChildItem -Path $daemonDir -Filter "hub_*.json" | Sort-Object LastWriteTime -Descending
+    if ($hubs.Count -gt 0) {
+        try {
+            $hubInfo = Get-Content $hubs[0].FullName -Raw | ConvertFrom-Json
+            if ($hubInfo.httpPort) {
+                $conn = Get-NetTCPConnection -LocalPort $hubInfo.httpPort -State Listen -ErrorAction SilentlyContinue
+                if ($conn) {
+                    $agyActive = $true
+                    Write-Host "  -> [SUCCESS] Antigravity Language Server detected on port $($hubInfo.httpPort)!" -ForegroundColor Green
+                    Write-Host "     ==> Primary Engine: Antigravity Internal Gemini 3.8 Flash (ACTIVE)" -ForegroundColor Green
+                }
+            }
+        } catch {}
+    }
+}
+if (-not $agyActive) {
+    Write-Host "  -> [Notice] Antigravity Language Server not detected. Will fallback to Gemini Proxy (49281)." -ForegroundColor DarkYellow
+}
+
 $proxyAlive = $false
 try {
     $res = Invoke-RestMethod -Uri "http://127.0.0.1:49281/v1beta/models" -TimeoutSec 3 -ErrorAction Stop
@@ -42,9 +66,9 @@ try {
 }
 
 if ($proxyAlive) {
-    Write-Host "  -> Gemini Proxy is ACTIVE and ready!" -ForegroundColor Green
+    Write-Host "  -> Gemini Fallback Proxy (127.0.0.1:49281) is ACTIVE and ready!" -ForegroundColor Green
 } else {
-    Write-Host "  -> Starting Gemini Proxy..." -ForegroundColor Yellow
+    Write-Host "  -> Starting Gemini Fallback Proxy..." -ForegroundColor Yellow
     if (Test-Path "$ProxyDir\沉浸式翻译Gemini网桥.exe") {
         Start-Process "$ProxyDir\沉浸式翻译Gemini网桥.exe" -WorkingDirectory $ProxyDir
     } elseif (Test-Path "$ProxyDir\启动网桥.bat") {
@@ -53,7 +77,7 @@ if ($proxyAlive) {
         Start-Process "wscript.exe" -ArgumentList "`"$ProxyDir\start_silent.vbs`"" -WorkingDirectory $ProxyDir
     }
     Start-Sleep -Seconds 2
-    Write-Host "  -> Gemini Proxy launch command issued." -ForegroundColor Green
+    Write-Host "  -> Gemini Fallback Proxy launch command issued." -ForegroundColor Green
 }
 
 # Step 3: Check QQ NT Process & Launch SnowLuma
