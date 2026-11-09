@@ -9,7 +9,8 @@
     "reflect": "node scripts/run_reflection.mjs",
     "test:memory": "node scripts/test_memory.mjs",
     "test:intel": "node scripts/test_intel.mjs",
-    "test:agy": "node scripts/test_agy_client.mjs"
+    "test:agy": "node scripts/test_agy_client.mjs",
+    "test:security": "node scripts/test_security_sandbox.mjs"
   },
   "keywords": [
     "deepseek-harness",
