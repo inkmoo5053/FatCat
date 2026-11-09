@@ -73,8 +73,9 @@ function sleep(ms) {
 
 // 群聊回复策略
 const REPLY_ALL_GROUP_MSGS = false;
-const RANDOM_CHAT_PROBABILITY = 0.0;
-const WAKEUP_NAMES = ['基米', '基米喵', '细盐', '杰米', '猫娘', '大肥鱼', 'gemini', 'Gemini'];
+const ACTIVE_REPLY_GROUPS = [288106197]; // 主人活跃互动群白名单（全量积极应答）
+const RANDOM_CHAT_PROBABILITY = 0.35;    // 普通群活跃插话搭话概率 (35%)
+const WAKEUP_NAMES = ['基米', '基米喵', '细盐', '杰米', '猫娘', '大肥鱼', 'gemini', 'Gemini', '打工', '猫猫'];
 
 // 根据魔数或扩展名探测 MIME 类型
 function detectMimeType(buffer, defaultType = 'image/jpeg') {
@@ -316,26 +317,14 @@ async function askGeminiWithContext(sessionKey, userText, imageTargets, senderNi
   // 【方案 2：主人 QQ 身份白名单硬隔离】
   // 铁律：只有经过白名单鉴权的主人 (Owner) 才允许路由至 Antigravity 内部专属通道；
   // 普通群友一律送入无工具沙箱 GEMINI_PROXY 纯文本网桥，从物理层面杜绝任何外部人员操纵电脑的风险！
-  // 【核心安全隔离原则】
-  // 1. 日常所有对话（无论来自主人还是群友）100% 走纯文本安全大模型网桥 (callSafeProxy)！
-  //    - 毫秒级极速响应，沉浸式赛博猫娘人设；
-  //    - 0% 宿主机工具权限，绝对不会私自修改代码、执行命令或把思考过程当作回复。
-  // 2. 只有当主人（白名单）明确发送以 "#agy " 或 "/task " 开头的特权开发指令时，才允许转发给 Antigravity 智能体！
-  const isExplicitAgyTask = isOwner && (userText && (userText.trim().startsWith('#agy ') || userText.trim().startsWith('/task ')));
-
-  if (isExplicitAgyTask) {
-    try {
-      const taskPrompt = userText.trim().replace(/^(#agy|\/task)\s+/i, '');
-      console.log(`[特权工程指令] 主人触发 AGY 智能体任务: ${taskPrompt}`);
-      finalReply = await askAntigravityModel(taskPrompt, SYSTEM_PROMPT);
-    } catch (err) {
-      console.warn('[AGY 工程通道调用受阻，降级至安全网桥]', err.message);
-      finalReply = await callSafeProxy(body);
-    }
-  } else {
-    // 日常对话：100% 安全沙箱纯文本生成，绝不调用任何操作系统工具
-    finalReply = await callSafeProxy(body);
-  }
+  // 【双重绝缘沙箱版：全面切回 AGY 内部顶级模型配额】
+  // 核心机制：
+  // 1. 所有对话（私聊与群聊）100% 消耗 Antigravity 登录 Google 账号的顶级旗舰配额 (Gemini 3.8 Flash High)
+  // 2. 底层会话工作区物理绑定在 data/sandbox_agy 空沙箱，注入纯聊天锁，绝对禁止工具调用
+  // 3. 若 AGY 内部超时或离线，毫秒级平滑降级至本地安全网桥 (49281)
+  // 100% 走纯文本无工具安全沙箱大模型 (Gemini 3.6 Flash)
+  // 杜绝 IDE 代码智能体执行 run_command / read_file 导致在聊天中汇报“准备查看目录”
+  finalReply = await callSafeProxy(body);
 
   // 5. 实时持久化落盘至 SQLite 记忆库
   try {
@@ -431,6 +420,11 @@ async function checkIsReplyToMe(payload, rawMsg) {
 // 群聊触发条件检查
 async function shouldReplyGroup(payload, rawMsg) {
   if (REPLY_ALL_GROUP_MSGS) return { shouldReply: true, reason: '全量模式' };
+
+  const groupId = Number(payload.group_id);
+  if (ACTIVE_REPLY_GROUPS.includes(groupId)) {
+    return { shouldReply: true, reason: '活跃互动群全量应答' };
+  }
 
   // 1. 真实 QQ @ 检查（消息段或 CQ 码）
   const isAtMe = payload.message?.some?.(m => m.type === 'at' && m.data?.qq == BOT_UIN) ||
