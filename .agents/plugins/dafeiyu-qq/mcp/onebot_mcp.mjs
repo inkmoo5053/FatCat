@@ -1,5 +1,14 @@
 #!/usr/bin/env node
 import readline from 'node:readline';
+import { 
+  getBilibiliHotList, 
+  getZhihuHotList, 
+  getWeiboHotSearch 
+} from '../../../../scripts/lib/intel_scout.mjs';
+import { 
+  getMemoryStats, 
+  recallRelevantMemories 
+} from '../../../../scripts/lib/memory_engine.mjs';
 
 const ENDPOINT = (process.env.ONEBOT_HTTP_ENDPOINT || 'http://127.0.0.1:3000').replace(/\/$/, '');
 const TOKEN = process.env.ONEBOT_ACCESS_TOKEN || '2KLZUoF6jBpV0OkMEu44wPMSogEX4I0cWqRm8p2Z5LY';
@@ -118,6 +127,71 @@ const TOOLS = [
       },
       required: ['action']
     }
+  },
+  {
+    name: 'get_bilibili_hot',
+    description: '获取哔哩哔哩 (B站) 实时全站热门视频排行 Top 榜单',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        limit: {
+          type: 'number',
+          description: '获取条数（默认 10）'
+        }
+      }
+    }
+  },
+  {
+    name: 'get_zhihu_hot',
+    description: '获取知乎全站实时热榜榜单与热点描述',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        limit: {
+          type: 'number',
+          description: '获取条数（默认 10）'
+        }
+      }
+    }
+  },
+  {
+    name: 'get_weibo_hot',
+    description: '获取新浪微博实时热搜榜',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        limit: {
+          type: 'number',
+          description: '获取条数（默认 10）'
+        }
+      }
+    }
+  },
+  {
+    name: 'get_memory_stats',
+    description: '查询大肥鱼（基米）持久化记忆库全景统计指标（流水数、群友档案数、三元组图谱数、磁盘占用）',
+    inputSchema: {
+      type: 'object',
+      properties: {}
+    }
+  },
+  {
+    name: 'recall_memory',
+    description: '根据关键词在基米历史长河对话记忆库中执行毫秒级 FTS5 语义联想召回',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        keyword: {
+          type: 'string',
+          description: '需要联想召回的关键词或主题短语'
+        },
+        limit: {
+          type: 'number',
+          description: '召回条数（默认 5）'
+        }
+      },
+      required: ['keyword']
+    }
   }
 ];
 
@@ -155,6 +229,27 @@ async function callOneBot(action, params = {}) {
 }
 
 async function handleToolCall(name, args) {
+  if (name === 'get_bilibili_hot') {
+    const list = await getBilibiliHotList(args.limit || 10);
+    return { content: [{ type: 'text', text: JSON.stringify(list, null, 2) }] };
+  }
+  if (name === 'get_zhihu_hot') {
+    const list = await getZhihuHotList(args.limit || 10);
+    return { content: [{ type: 'text', text: JSON.stringify(list, null, 2) }] };
+  }
+  if (name === 'get_weibo_hot') {
+    const list = await getWeiboHotSearch(args.limit || 10);
+    return { content: [{ type: 'text', text: JSON.stringify(list, null, 2) }] };
+  }
+  if (name === 'get_memory_stats') {
+    const stats = getMemoryStats();
+    return { content: [{ type: 'text', text: JSON.stringify(stats, null, 2) }] };
+  }
+  if (name === 'recall_memory') {
+    const recalled = recallRelevantMemories(args.keyword, '', args.limit || 5);
+    return { content: [{ type: 'text', text: JSON.stringify(recalled, null, 2) }] };
+  }
+
   let action = name;
   let params = { ...args };
 

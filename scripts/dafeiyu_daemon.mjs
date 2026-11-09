@@ -1,5 +1,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { 
+  initMemory, 
+  recordMessage, 
+  getRecentHistory, 
+  recallRelevantMemories, 
+  clearSessionHistory, 
+  getMemoryStats 
+} from './lib/memory_engine.mjs';
+import { 
+  getBilibiliHotList, 
+  getZhihuHotList, 
+  getWeiboHotSearch 
+} from './lib/intel_scout.mjs';
+
+// 初始化持久化记忆数据库
+initMemory();
 
 // Node.js v22+ / v24+ 内置全局 WebSocket 与 fetch
 const WebSocket = globalThis.WebSocket;
@@ -202,8 +218,9 @@ function cleanRawMessage(rawMsg) {
 }
 
 // 调用 Gemini 生成带上下文的多模态回答
-async function askGeminiWithContext(sessionKey, userText, imageTargets, senderNick) {
-  let history = sessions.get(sessionKey) || [];
+async function askGeminiWithContext(sessionKey, userText, imageTargets, senderNick, senderUin = '', isReply = false) {
+  // 从 SQLite 持久化记忆库中加载该会话最近的多轮上下文
+  let history = getRecentHistory(sessionKey, 30);
 
   const speakerTag = `[${senderNick}]`;
 
@@ -218,15 +235,26 @@ async function askGeminiWithContext(sessionKey, userText, imageTargets, senderNi
     console.log(`[识图处理] 成功解析 ${imageParts.length} 张有效图片`);
   }
 
-  // 2. 组装当前用户轮次 parts
+  // 2. 毫秒级 FTS5 联想召回历史长河中的相关记忆
+  let recalledContextText = '';
+  if (userText && userText.trim().length >= 2) {
+    const recalled = recallRelevantMemories(userText, sessionKey, 2);
+    if (recalled.length > 0) {
+      const recallSnippets = recalled.map(r => `• ${r.time} 【${r.sender}】: ${r.content}`).join('\n');
+      recalledContextText = `\n【星光猫脑内联想回忆】：你依稀联想到了过去发生的类似对话：\n${recallSnippets}\n（请在需要时自然融入你的回复，展现你的超强记忆力，但不必生硬复读）`;
+      console.log(`[记忆联想命中] 成功召回 ${recalled.length} 条长程历史事实`);
+    }
+  }
+
+  // 3. 组装当前用户轮次 parts
   const currentParts = [];
   const displayText = userText || (imageParts.length > 0 ? '（发送了一张图片）' : '……');
-  currentParts.push({ text: `${speakerTag}: ${displayText}` });
+  currentParts.push({ text: `${speakerTag}: ${displayText}${recalledContextText}` });
   for (const imgPart of imageParts) {
     currentParts.push(imgPart);
   }
 
-  // 3. 构建多轮上下文 Payload
+  // 4. 构建多轮上下文 Payload
   const body = {
     systemInstruction: {
       parts: [{ text: SYSTEM_PROMPT }]
@@ -250,21 +278,25 @@ async function askGeminiWithContext(sessionKey, userText, imageTargets, senderNi
     const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text;
     const finalReply = reply ? reply.trim() : '呼噜噜~ 刚才算力波动没听清喵~ 🐾';
 
-    // 4. 更新历史记录（为了优化后续多轮对话传输带宽，历史轮次将图片转换为提示说明）
-    const historyUserParts = [];
-    historyUserParts.push({ text: `${speakerTag}: ${displayText}` });
-    if (imageParts.length > 0) {
-      historyUserParts.push({ text: `[发送了 ${imageParts.length} 张图片：已在此轮完成识别]` });
-    }
+    // 5. 实时持久化落盘至 SQLite 记忆库
+    const imageTag = imageParts.length > 0 ? `[发送了 ${imageParts.length} 张图片：已在此轮完成识别]` : '';
+    recordMessage({
+      sessionKey,
+      senderId: senderUin,
+      senderNick,
+      role: 'user',
+      content: displayText,
+      imageTags: imageTag,
+      isReplyToBot: isReply
+    });
 
-    history.push({ role: 'user', parts: historyUserParts });
-    history.push({ role: 'model', parts: [{ text: finalReply }] });
-
-    // 维持历史记忆轮次上限
-    if (history.length > MAX_HISTORY_TURNS) {
-      history = history.slice(history.length - MAX_HISTORY_TURNS);
-    }
-    sessions.set(sessionKey, history);
+    recordMessage({
+      sessionKey,
+      senderId: String(BOT_UIN),
+      senderNick: '基米',
+      role: 'model',
+      content: finalReply
+    });
 
     return finalReply;
   } catch (err) {
@@ -455,10 +487,53 @@ function startDaemon() {
     const isGroup = payload.message_type === 'group';
     const sessionKey = isPrivate ? `private:${senderUin}` : `group:${payload.group_id}`;
 
+    // 跨平台情报侦察指令（B站热门 / 微博热搜 / 知乎热榜）
+    if (['微博热搜', '/weibo', '热搜'].includes(cleanText)) {
+      const weibo = await getWeiboHotSearch(5);
+      const lines = weibo.map(w => `${w.rank}. ${w.word} (${w.hotIndex})`);
+      const reply = `【微博实时热搜榜】🔥\n${lines.join('\n')}\n星光猫猫已完成实时采风~ 喵呜！✨🐾`;
+      await sleep(600);
+      if (isPrivate) await sendPrivateMsg(senderUin, reply);
+      else if (isGroup) await sendGroupMsg(payload.group_id, reply);
+      return;
+    }
+
+    if (['b站热门', 'B站热门', '/bili', '/bilibili'].includes(cleanText)) {
+      const bili = await getBilibiliHotList(5);
+      const lines = bili.map(b => `${b.rank}. ${b.title} [UP:${b.author}]`);
+      const reply = `【B站实时全站热门】🎬\n${lines.join('\n')}\n快去康康有没有好看的视频喵~ 呼噜噜🐾`;
+      await sleep(600);
+      if (isPrivate) await sendPrivateMsg(senderUin, reply);
+      else if (isGroup) await sendGroupMsg(payload.group_id, reply);
+      return;
+    }
+
+    if (['知乎热榜', '/zhihu'].includes(cleanText)) {
+      const zhihu = await getZhihuHotList(5);
+      const lines = zhihu.map(z => `${z.rank}. ${z.title}`);
+      const reply = `【知乎全站实时热榜】💡\n${lines.join('\n')}\n谢邀，刚下飞船，本星光猫觉得很有意思喵！(=^･ω･^=)🐾`;
+      await sleep(600);
+      if (isPrivate) await sendPrivateMsg(senderUin, reply);
+      else if (isGroup) await sendGroupMsg(payload.group_id, reply);
+      return;
+    }
+
+    // 记忆统计指令检测（支持 /memory、/stats、记忆状态）
+    const memoryKeywords = ['/memory', '/stats', '记忆状态', '查看记忆'];
+    if (memoryKeywords.includes(cleanText)) {
+      const stats = getMemoryStats();
+      const statsReply = `【基米星光记忆库】✨\n🐾 累计记录流水: ${stats.totalMessages} 条\n🐾 结识群友档案: ${stats.totalProfiles} 位\n🐾 知识图谱三元组: ${stats.totalTriplets} 条\n🐾 本地数据库大小: ${stats.dbSizeBytes}\n本喵的百万 Token 记忆可是永久持久化的喵！随时都能瞬间回忆起来！呼噜噜~ (=^･ω･^=) 🐾`;
+      await sleep(600);
+      if (isPrivate) await sendPrivateMsg(senderUin, statsReply);
+      else if (isGroup) await sendGroupMsg(payload.group_id, statsReply);
+      return;
+    }
+
     // 记忆重置指令检测（支持 /reset、/clear、/new、重置记忆、清除记忆）
     const resetKeywords = ['/reset', '/clear', '/new', '重置记忆', '清除记忆', '清空记忆'];
     if (resetKeywords.includes(cleanText)) {
       sessions.delete(sessionKey);
+      clearSessionHistory(sessionKey);
       const resetReply = '喵呜~ 刚才的记忆本喵已经统统打包丢进太空垃圾桶啦！我们重新开始聊吧喵~ ✨🐾';
       await sleep(1000);
       if (isPrivate) await sendPrivateMsg(senderUin, resetReply);
@@ -468,7 +543,7 @@ function startDaemon() {
 
     if (isPrivate) {
       console.log(`\n[收到私聊] 来自 ${senderNick}(${senderUin}): ${rawMsg} (检测到图片: ${imageTargets.length}张)`);
-      const replyText = await askGeminiWithContext(sessionKey, cleanText, imageTargets, senderNick);
+      const replyText = await askGeminiWithContext(sessionKey, cleanText, imageTargets, senderNick, senderUin, false);
       const delayMs = calculateHumanDelay(replyText, imageTargets.length > 0);
       console.log(`[防风控拟人延迟] 模拟思考与打字中，等待 ${(delayMs / 1000).toFixed(1)} 秒后再发送...`);
       await sleep(delayMs);
@@ -479,12 +554,13 @@ function startDaemon() {
         console.log(`\n[收到群消息(触发回复 - ${checkResult.reason})] 来自 群:${payload.group_id} / ${senderNick}(${senderUin}): ${rawMsg} (检测到图片: ${imageTargets.length}张)`);
         
         let promptText = cleanText;
-        if (checkResult.reason === '引用回复唤醒') {
+        const isQuotedReply = checkResult.reason === '引用回复唤醒';
+        if (isQuotedReply) {
           const quoteDesc = checkResult.quotedMsg ? `（引用回复了基米刚才的消息：“${checkResult.quotedMsg.slice(0, 50)}”）` : '（引用回复了基米刚才的消息）';
           promptText = `${quoteDesc} ${cleanText}`.trim();
         }
 
-        const replyText = await askGeminiWithContext(sessionKey, promptText, imageTargets, senderNick);
+        const replyText = await askGeminiWithContext(sessionKey, promptText, imageTargets, senderNick, senderUin, isQuotedReply);
         const delayMs = calculateHumanDelay(replyText, imageTargets.length > 0);
         console.log(`[防风控拟人延迟] 模拟思考与打字中，等待 ${(delayMs / 1000).toFixed(1)} 秒后再发送...`);
         await sleep(delayMs);

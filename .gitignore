@@ -5,6 +5,15 @@
 # SnowLuma Binaries, Native Addons, Runtime and Local Caches
 snowluma/
 
+# Local Memory & Browser Profiles (Privacy & Runtime data)
+data/memory/*.db*
+data/memory/*.sqlite*
+data/browser_profiles/*
+data/reflection_reports/*.md
+!data/memory/.gitkeep
+!data/browser_profiles/.gitkeep
+!data/reflection_reports/.gitkeep
+
 # Logs and runtime artifacts
 *.log
 *.tmp

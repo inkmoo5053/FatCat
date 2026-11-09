@@ -1,0 +1,28 @@
+{
+  "name": "fatcat",
+  "version": "2.0.0",
+  "description": "FatCat (大肥鱼 · 赛博星光猫娘 基米 QQ Agent) - Full-Featured Autonomous DSH / OneBot v11 AI Agent with Omni-Memory & Web Roaming",
+  "type": "module",
+  "main": "scripts/dafeiyu_daemon.mjs",
+  "scripts": {
+    "start": "node scripts/dafeiyu_daemon.mjs",
+    "reflect": "node scripts/run_reflection.mjs",
+    "test:memory": "node scripts/test_memory.mjs",
+    "test:intel": "node scripts/test_intel.mjs"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "antigravity",
+    "onebot-v11",
+    "gemini",
+    "qq-agent",
+    "long-term-memory",
+    "web-crawler"
+  ],
+  "author": "inkmoo5053",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

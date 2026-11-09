@@ -32,7 +32,16 @@ description: 指导智能体通过 OneBot v11 MCP 协议与 SnowLuma 配合，�
 * **群戳一戳**：`send_group_poke`（传入 `group_id` 与目标成员 `user_id`）
 * **好友主页点赞**：`send_like`（传入 `user_id` 与点赞次数 `times`，默认 10 次）
 
-### 5. 底层原生动作扩展
+### 5. 全网自媒体情报侦察 (新增)
+* **B站热门视频排行**：`get_bilibili_hot`（可选参数 `limit`，默认 10）
+* **知乎全站实时热榜**：`get_zhihu_hot`（可选参数 `limit`，默认 10）
+* **微博实时热搜榜单**：`get_weibo_hot`（可选参数 `limit`，默认 10）
+
+### 6. 四层无界记忆库管理 (新增)
+* **查询记忆全景统计**：`get_memory_stats`（无参数，返回流水数、群友档案数、三元组图谱数与磁盘占用）
+* **FTS5 关键词毫秒级语义联想召回**：`recall_memory`（传入 `keyword` 与可选 `limit`）
+
+### 7. 底层原生动作扩展
 * **工具**：`invoke_onebot_action`
 * **用途**：当需要执行 OneBot v11 的进阶接口（如获取单条消息内容 `get_msg`、撤回消息 `delete_msg` 等）时直接调用。
 
