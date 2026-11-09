@@ -73,7 +73,7 @@ function sleep(ms) {
 
 // 群聊回复策略
 const REPLY_ALL_GROUP_MSGS = false;
-const ACTIVE_REPLY_GROUPS = [288106197]; // 主人活跃互动群白名单（全量积极应答）
+const ACTIVE_REPLY_GROUPS = [288106197, 1128539838]; // 主人活跃互动群白名单（全量积极应答）
 const RANDOM_CHAT_PROBABILITY = 0.35;    // 普通群活跃插话搭话概率 (35%)
 const WAKEUP_NAMES = ['基米', '基米喵', '细盐', '杰米', '猫娘', '大肥鱼', 'gemini', 'Gemini', '打工', '猫猫'];
 
@@ -228,24 +228,37 @@ function cleanRawMessage(rawMsg) {
 }
 
 // 调用无系统工具权限的纯文本安全网桥 (100% 物理安全沙箱，零宿主机执行权限)
+const CANDIDATE_MODELS = [
+  'gemini-3.5-flash-lite', // 极速主力：实测耗时 800~900ms，避开全球 3.6-flash 突发高峰限流
+  'gemini-3.6-flash',      // 旗舰兜底
+  'gemini-3.1-flash-lite'  // 稳定备选
+];
+
 async function callSafeProxy(body) {
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 12000); // 12秒熔断保护
-    const res = await fetch(GEMINI_PROXY, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: controller.signal
-    });
-    clearTimeout(timer);
-    const data = await res.json();
-    const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    return reply ? reply.trim() : '呼噜噜~ 刚才算力波动没听清喵~ 🐾';
-  } catch (err) {
-    console.error('[安全网桥错误]', err.message);
-    return '呜哇~ 脑电波好像有点卡壳了喵呜~ 🐾';
+  for (const model of CANDIDATE_MODELS) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 7000); // 单模型 7 秒快速熔断
+      const endpoint = `http://127.0.0.1:49281/v1beta/models/${model}:generateContent`;
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+      clearTimeout(timer);
+      if (!res.ok) {
+        console.warn(`[网桥模型 ${model} 返回 HTTP ${res.status}]，尝试下一候选模型...`);
+        continue;
+      }
+      const data = await res.json();
+      const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (reply) return reply.trim();
+    } catch (err) {
+      console.warn(`[网桥模型 ${model} 响应受阻: ${err.message}]，正在自动切换备用模型...`);
+    }
   }
+  return '呜哇~ 脑电波好像有点卡壳了喵呜~ 🐾';
 }
 
 // 调用 Gemini 生成带上下文的多模态回答
