@@ -311,18 +311,24 @@ async function askGeminiWithContext(sessionKey, userText, imageTargets, senderNi
   // 【方案 2：主人 QQ 身份白名单硬隔离】
   // 铁律：只有经过白名单鉴权的主人 (Owner) 才允许路由至 Antigravity 内部专属通道；
   // 普通群友一律送入无工具沙箱 GEMINI_PROXY 纯文本网桥，从物理层面杜绝任何外部人员操纵电脑的风险！
-  if (isOwner) {
-    try {
-      const historyText = history.map(h => `${h.role === 'user' ? '用户' : '基米'}: ${h.parts.map(p => p.text).filter(Boolean).join(' ')}`).join('\n');
-      const promptText = `【前序上下文】\n${historyText}\n\n【最新消息】\n${speakerTag}: ${taggedText}${recalledContextText}`;
+  // 【核心安全隔离原则】
+  // 1. 日常所有对话（无论来自主人还是群友）100% 走纯文本安全大模型网桥 (callSafeProxy)！
+  //    - 毫秒级极速响应，沉浸式赛博猫娘人设；
+  //    - 0% 宿主机工具权限，绝对不会私自修改代码、执行命令或把思考过程当作回复。
+  // 2. 只有当主人（白名单）明确发送以 "#agy " 或 "/task " 开头的特权开发指令时，才允许转发给 Antigravity 智能体！
+  const isExplicitAgyTask = isOwner && (userText && (userText.trim().startsWith('#agy ') || userText.trim().startsWith('/task ')));
 
-      finalReply = await askAntigravityModel(promptText, SYSTEM_PROMPT);
+  if (isExplicitAgyTask) {
+    try {
+      const taskPrompt = userText.trim().replace(/^(#agy|\/task)\s+/i, '');
+      console.log(`[特权工程指令] 主人触发 AGY 智能体任务: ${taskPrompt}`);
+      finalReply = await askAntigravityModel(taskPrompt, SYSTEM_PROMPT);
     } catch (err) {
-      console.warn('[主人调用 AGY 内部通道受阻，平滑降级至安全网桥]', err.message);
+      console.warn('[AGY 工程通道调用受阻，降级至安全网桥]', err.message);
       finalReply = await callSafeProxy(body);
     }
   } else {
-    // 普通群友：100% 物理隔离纯文本生成，零系统工具权限，绝不接触任何宿主机执行接口
+    // 日常对话：100% 安全沙箱纯文本生成，绝不调用任何操作系统工具
     finalReply = await callSafeProxy(body);
   }
 
