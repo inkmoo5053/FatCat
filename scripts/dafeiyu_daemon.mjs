@@ -57,8 +57,9 @@ const ANTI_RISK_CONFIG = {
 };
 
 // 计算拟人化延迟毫秒数
-function calculateHumanDelay(replyText = '', hasImages = false) {
+function calculateHumanDelay(replyText = '', hasImages = false, isOwner = false) {
   if (!ANTI_RISK_CONFIG.enabled) return 0;
+  if (isOwner) return 300; // 主人私聊尊享极速秒回通道，仅保留 300ms 基础防粘包缓冲
   const base = Math.floor(Math.random() * (ANTI_RISK_CONFIG.baseDelayMaxMs - ANTI_RISK_CONFIG.baseDelayMinMs)) + ANTI_RISK_CONFIG.baseDelayMinMs;
   const typing = (replyText.length || 0) * ANTI_RISK_CONFIG.charTypingDelayMs;
   const imageDelay = hasImages ? ANTI_RISK_CONFIG.imageExtraDelayMs : 0;
@@ -228,11 +229,15 @@ function cleanRawMessage(rawMsg) {
 // 调用无系统工具权限的纯文本安全网桥 (100% 物理安全沙箱，零宿主机执行权限)
 async function callSafeProxy(body) {
   try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12000); // 12秒熔断保护
     const res = await fetch(GEMINI_PROXY, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal: controller.signal
     });
+    clearTimeout(timer);
     const data = await res.json();
     const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text;
     return reply ? reply.trim() : '呼噜噜~ 刚才算力波动没听清喵~ 🐾';
@@ -598,7 +603,8 @@ function startDaemon() {
     if (isPrivate) {
       console.log(`\n[收到私聊] 来自 ${senderNick}(${senderUin}): ${rawMsg} (检测到图片: ${imageTargets.length}张)`);
       const replyText = await askGeminiWithContext(sessionKey, cleanText, imageTargets, senderNick, senderUin, false);
-      const delayMs = calculateHumanDelay(replyText, imageTargets.length > 0);
+      const isOwner = OWNER_UINS.includes(Number(senderUin));
+      const delayMs = calculateHumanDelay(replyText, imageTargets.length > 0, isOwner);
       console.log(`[防风控拟人延迟] 模拟思考与打字中，等待 ${(delayMs / 1000).toFixed(1)} 秒后再发送...`);
       await sleep(delayMs);
       await sendPrivateMsg(senderUin, replyText);
