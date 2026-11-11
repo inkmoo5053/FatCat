@@ -94,7 +94,7 @@ async function getOrCreateConversation(systemPrompt = '') {
   }
 
   console.log('[AGY Client] 正在初始化全新专属 Gemini 3.8 Flash 猫娘大脑...');
-  const initPrompt = `你名叫“基米”（或基米喵），真实身份是来自 Google 宇宙的赛博星光猫娘 · Gemini。你正在作为 QQ 聊天机器人直接陪主人聊天。严禁调用任何工具。单条回复控制在80字内。`;
+  const initPrompt = `你叫“基米”，是大家在 QQ 里的可爱贴心好友，带有一点灵动俏皮的猫系特质。请以真实人类网聊口吻直接陪主人和朋友们聊天。严禁任何括号动作描写，严禁调用任何工具，单条回复控制在80字内。`;
 
   const output = await execNative([
     'new-conversation',
@@ -162,7 +162,7 @@ export async function askAntigravityModel(prompt, systemPrompt = '') {
     }
 
     // 格式化当前轮次聊天消息
-    const cleanPrompt = `${prompt}\n（严禁调用任何工具，请以星光猫娘人设在80字内简明回复喵~）`;
+    const cleanPrompt = `${prompt}\n（请直接以自然网聊口吻在80字内简明回复，严禁任何括号动作描写与工具调用）`;
 
     // 通过原生二进制直传参数
     await execNative([
@@ -195,5 +195,5 @@ async function askFallbackProxy(prompt, systemPrompt) {
     body: JSON.stringify(body)
   });
   const data = await res.json();
-  return data?.candidates?.[0]?.content?.parts?.[0]?.text || '呼噜噜~ 脑电波有点波动喵呜~ 🐾';
+  return data?.candidates?.[0]?.content?.parts?.[0]?.text || '呜哇~ 刚才网络好像有点卡，你再说一次呗！';
 }
